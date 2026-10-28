@@ -11,6 +11,7 @@ from reservas.models import Availability, Booking
 FRANJA_INICIO = 9    # 09:00
 FRANJA_FIN = 21      # 21:00
 MAX_SEMANAS_REPETICION = 12
+HORAS_MIN_CANCELACION = 2
 
 
 class ReservaInvalida(Exception):
@@ -21,11 +22,15 @@ class ConflictoHorario(Exception):
     """La franja se solapa con otra reserva o con un bloqueo."""
 
 
+class CancelacionNoPermitida(Exception):
+    """La reserva no se puede cancelar (ya cancelada, pasada o fuera de plazo)."""
+
+
 def hay_conflicto(resource, inicio, fin, excluir_id=None):
     """
     Indica si la franja [inicio, fin) se solapa con una reserva o un bloqueo del recurso.
     """
-    reservas = Booking.objects.filter(resource=resource, start_time__lt=fin, end_time__gt=inicio)
+    reservas = Booking.objects.activas().filter(resource=resource, start_time__lt=fin, end_time__gt=inicio)
     if excluir_id is not None:
         reservas = reservas.exclude(pk=excluir_id)
     bloqueos = Availability.objects.filter(resource=resource, start_time__lt=fin, end_time__gt=inicio)
@@ -76,3 +81,37 @@ def crear_reservas(user, resource, inicio, fin, repetir_semanas=0):
                 user=user, resource=resource, start_time=desde, end_time=hasta,
             ))
     return creadas
+
+
+def _motivo_no_cancelable(booking, ahora):
+    """Devuelve por qué no se puede cancelar la reserva, o None si se puede."""
+    if booking.status == Booking.Status.CANCELADA:
+        return 'La reserva ya estaba cancelada.'
+    if booking.start_time <= ahora:
+        return 'No se puede cancelar una reserva que ya empezó o terminó.'
+    if booking.start_time - ahora < timedelta(hours=HORAS_MIN_CANCELACION):
+        return (f'Solo se puede cancelar con al menos {HORAS_MIN_CANCELACION} horas '
+                'de anticipación.')
+    return None
+
+
+def puede_cancelar(booking, ahora=None):
+    """Indica si la reserva está confirmada y empieza dentro de 2 horas o más."""
+    return _motivo_no_cancelable(booking, ahora or timezone.now()) is None
+
+
+def cancelar_reserva(booking):
+    """
+    Cancela la reserva: queda en estado cancelada y libera la franja.
+    Lanza CancelacionNoPermitida si no cumple las reglas.
+    """
+    with transaction.atomic():
+        booking = Booking.objects.select_for_update().get(pk=booking.pk)
+        ahora = timezone.now()
+        motivo = _motivo_no_cancelable(booking, ahora)
+        if motivo:
+            raise CancelacionNoPermitida(motivo)
+        booking.status = Booking.Status.CANCELADA
+        booking.cancelled_at = ahora
+        booking.save(update_fields=['status', 'cancelled_at'])
+    return booking
