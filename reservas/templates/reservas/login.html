@@ -1,37 +1,25 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Iniciar Sesión</title>
-    <style>
-        body { font-family: Arial, sans-serif; background: #f4f4f4; }
-        .login-container {
-            max-width: 400px; margin: 50px auto; padding: 20px;
-            background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        h2 { text-align: center; color: #333; }
-        input { width: 100%; padding: 10px; margin: 10px 0; }
-        button { width: 100%; padding: 10px; background: #2563eb; color: white; border: none; border-radius: 5px; }
-        button:hover { background: #1e40af; }
-        .error { color: red; text-align: center; }
-    </style>
-</head>
-<body>
-    <div class="login-container">
-        <h2>Iniciar Sesión</h2>
-        {% if messages %}
-            <div class="error">
-                {% for message in messages %}
-                    <p>{{ message }}</p>
-                {% endfor %}
-            </div>
-        {% endif %}
-        <form method="post">
+{% extends 'base.html' %}
+
+{% block title %}Iniciar sesión{% endblock %}
+
+{% block content %}
+    <div class="max-w-sm mx-auto bg-white rounded-lg shadow p-6 mt-6">
+        <h1 class="text-2xl font-bold text-center mb-4">Iniciar sesión</h1>
+
+        {# El formulario no tiene action: se envía a la misma URL y conserva ?next= #}
+        <form method="post" class="space-y-4">
             {% csrf_token %}
-            <input type="text" name="username" placeholder="Usuario" required>
-            <input type="password" name="password" placeholder="Contraseña" required>
-            <button type="submit">Entrar</button>
+            <div>
+                <label for="username" class="block text-sm font-medium mb-1">Usuario</label>
+                <input id="username" type="text" name="username" required autofocus autocomplete="username"
+                       class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="password" class="block text-sm font-medium mb-1">Contraseña</label>
+                <input id="password" type="password" name="password" required autocomplete="current-password"
+                       class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Entrar</button>
         </form>
     </div>
-</body>
-</html>
+{% endblock %}

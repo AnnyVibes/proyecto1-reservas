@@ -1,32 +1,62 @@
-<!-- templates/base.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Gestor de Reservas{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Gestor de Reservas{% endblock %} · Gestor de Reservas</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col">
+
     <!-- NAVBAR -->
-    <nav class="navbar">
-        <div class="container">
-            <h2 class="logo">Gestor de Reservas</h2>
-            <div class="nav-links">
-                <a href="/">Inicio</a>
+    <nav class="bg-blue-700 text-white shadow">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <a href="{% url 'home' %}" class="text-lg font-bold tracking-tight">🏟️ Gestor de Reservas</a>
+
+            <div class="flex flex-wrap items-center gap-1 text-sm">
+                <a href="{% url 'home' %}" class="px-3 py-2 rounded hover:bg-blue-600">Pistas</a>
                 {% if user.is_authenticated %}
-                    <span>Hola, {{ user.username }}</span>
-                    <a href="/logout/">Cerrar sesión</a>
+                    <a href="{% url 'mis_reservas' %}" class="px-3 py-2 rounded hover:bg-blue-600">Mis reservas</a>
+                    {% block nav_extra %}{% endblock %}
+                    {% if user.is_staff %}
+                        <a href="{% url 'admin:index' %}" class="px-3 py-2 rounded hover:bg-blue-600">Admin</a>
+                    {% endif %}
+                    <span class="px-3 py-2 text-blue-100">Hola, {{ user.username }}</span>
+                    <form method="post" action="{% url 'logout' %}" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="bg-red-500 hover:bg-red-600 px-3 py-2 rounded">Cerrar sesión</button>
+                    </form>
                 {% else %}
-                    <a href="/login/">Iniciar sesión</a>
+                    <a href="{% url 'login' %}" class="bg-green-500 hover:bg-green-600 px-3 py-2 rounded">Iniciar sesión</a>
                 {% endif %}
             </div>
         </div>
     </nav>
 
     <!-- CONTENIDO -->
-    <main>
+    <main class="flex-grow w-full max-w-6xl mx-auto px-4 py-6">
+        {% if messages %}
+            <div class="mb-4 space-y-2">
+                {% for message in messages %}
+                    <div role="alert" class="p-3 rounded border
+                        {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800
+                        {% elif message.tags == 'warning' %}bg-yellow-50 border-yellow-200 text-yellow-800
+                        {% elif message.tags == 'success' %}bg-green-50 border-green-200 text-green-800
+                        {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
         {% block content %}{% endblock %}
     </main>
+
+    <footer class="text-center text-xs text-gray-500 py-4">
+        Gestor de Reservas · Horario de reservas de 09:00 a 21:00
+    </footer>
+
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -1,10 +1,8 @@
 import json
-from datetime import datetime, timedelta, time
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
-from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
@@ -15,73 +13,6 @@ from .services.reservas import (
     CancelacionNoPermitida, ConflictoHorario, ReservaInvalida,
     cancelar_reserva as cancelar_reserva_servicio, crear_reservas, puede_cancelar,
 )
-
-
-# Horario por defecto (si no hay Availability definida)
-DEFAULT_START = time(9, 0)   # 09:00
-DEFAULT_END = time(21, 0)    # 21:00
-
-
-def calendario(request, resource_id):
-    """
-    Muestra un calendario semanal de reservas para un recurso.
-    """
-    resource = get_object_or_404(Resource, id=resource_id)
-
-    hoy = datetime.today()
-    inicio_semana = hoy - timedelta(days=hoy.weekday())  # Lunes
-    dias_semana = [inicio_semana + timedelta(days=i) for i in range(7)]
-
-    reservas = Booking.objects.filter(
-        resource=resource,
-        start_time__date__gte=inicio_semana,
-        start_time__date__lte=inicio_semana + timedelta(days=6)
-    ).order_by('start_time')
-
-    reservas_por_dia = {date_format(dia, 'Y-m-d'): [] for dia in dias_semana}
-    for reserva in reservas:
-        clave = date_format(reserva.start_time, 'Y-m-d')
-        reservas_por_dia[clave].append(reserva)
-
-    return render(request, 'reservas/calendario.html', {
-        'resource': resource,
-        'dias_semana': dias_semana,
-        'reservas_por_dia': reservas_por_dia,
-    })
-
-
-def calendario_navegable(request, resource_id):
-    """
-    Calendario semanal con botones de semana anterior/siguiente.
-    """
-    resource = get_object_or_404(Resource, id=resource_id)
-
-    hoy = datetime.today()
-    delta = 0
-    if request.GET.get('week') == 'prev':
-        delta = -7
-    elif request.GET.get('week') == 'next':
-        delta = 7
-
-    inicio_semana = (hoy - timedelta(days=hoy.weekday())) + timedelta(days=delta)
-    dias_semana = [inicio_semana + timedelta(days=i) for i in range(7)]
-
-    reservas = Booking.objects.filter(
-        resource=resource,
-        start_time__date__gte=inicio_semana,
-        start_time__date__lte=inicio_semana + timedelta(days=6)
-    ).order_by('start_time')
-
-    reservas_por_dia = {date_format(dia, 'Y-m-d'): [] for dia in dias_semana}
-    for reserva in reservas:
-        clave = date_format(reserva.start_time, 'Y-m-d')
-        reservas_por_dia[clave].append(reserva)
-
-    return render(request, 'reservas/calendario.html', {
-        'resource': resource,
-        'dias_semana': dias_semana,
-        'reservas_por_dia': reservas_por_dia,
-    })
 
 
 def calendario_full(request, resource_id):
@@ -207,9 +138,10 @@ def login_view(request):
     return render(request, 'reservas/login.html')
 
 
+@require_POST
 def logout_view(request):
     """
-    Cerrar sesión.
+    Cerrar sesión (solo por POST, para que un enlace externo no pueda cerrarla).
     """
     logout(request)
     return redirect('/login/')
