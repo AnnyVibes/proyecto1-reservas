@@ -7,7 +7,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.11/locales-all.global.min.js"></script>
     <style>
         /* Estilos del calendario que Tailwind no cubre */
-        .fc .fc-toolbar-title { font-size: 1.25rem; font-weight: 600; text-transform: capitalize; }
+        .fc .fc-toolbar-title { font-size: 1.25rem; font-weight: 600; }
+        .fc .fc-toolbar-title::first-letter { text-transform: uppercase; }
         .fc .fc-button-primary { background: #1d4ed8; border-color: #1d4ed8; }
         .fc .fc-button-primary:not(:disabled).fc-button-active,
         .fc .fc-button-primary:hover { background: #1e40af; border-color: #1e40af; }
@@ -115,7 +116,7 @@
             }
 
             function pintarDias() {
-                document.querySelectorAll('.fc-daygrid-day[data-date]').forEach(celda => {
+                document.querySelectorAll('.fc-dayGridMonth-view .fc-daygrid-day[data-date]').forEach(celda => {
                     celda.classList.remove('dia-libre', 'dia-parcial', 'dia-completo', 'dia-pasado');
                     const dia = estadoPorDia[celda.dataset.date];
                     if (dia) {
@@ -152,6 +153,7 @@
                 datesSet: cargarDisponibilidad,
                 // Si FullCalendar vuelve a dibujar las celdas, conservan su color
                 dayCellClassNames: function(arg) {
+                    if (arg.view.type !== 'dayGridMonth') return [];   // solo se colorea el mes
                     const dia = estadoPorDia[fechaDia(arg.date)];
                     return dia ? ['dia-' + dia.estado] : [];
                 },
