@@ -28,14 +28,16 @@ Registro de los usos de IA que afectaron significativamente el desarrollo del pr
 
 ## Verificación del análisis (Fase 1)
 
-Puntos del informe de Claude Code comprobados manualmente contra el código:
+Puntos del informe de Claude Code comprobados manualmente contra el código (rol QA: Anllelina Varcasia, 2026-10-28):
 
-| Afirmación de la IA | Archivo | ¿Correcta? |
-|---------------------|---------|------------|
-| `tests.py` está vacío y `manage.py test` encuentra 0 pruebas | `reservas/tests.py` | ☐ |
-| `api_crear_reserva` tiene `@csrf_exempt` | `reservas/views.py` | ☐ |
-| `api_crear_reserva` no consulta `Availability` (bloqueos) | `reservas/views.py` | ☐ |
-| `calendario.html` siempre muestra "Libre" por el uso de la clave literal `fecha` | `reservas/templates/reservas/calendario.html` | ☐ |
-| `INSTALLED_APPS` está definido dos veces | `gestor_reservas/settings.py` | ☐ |
-| `crear_reservas_demo` borra todas las reservas | `reservas/management/commands/crear_reservas_demo.py` | ☐ |
-| `Booking` tiene `unique_together` (resource, start_time, end_time) | `reservas/models.py` | ☐ |
+| Afirmación de la IA | Archivo | Evidencia | ¿Correcta? |
+|---------------------|---------|-----------|------------|
+| `tests.py` está vacío y `manage.py test` encuentra 0 pruebas | `reservas/tests.py` | Solo contiene la plantilla por defecto; `manage.py test` → "Found 0 test(s)" | ✅ |
+| `api_crear_reserva` tiene `@csrf_exempt` | `reservas/views.py` | Línea 119: `@csrf_exempt` sobre la función (línea 120) | ✅ |
+| `api_crear_reserva` no consulta `Availability` (bloqueos) | `reservas/views.py` | La única consulta está en la línea 88, fuera de la función (que inicia en la línea 120) | ✅ |
+| `calendario.html` siempre muestra "Libre" por el uso de la clave literal `fecha` | `reservas/templates/reservas/calendario.html` | Líneas 110-111: `reservas_por_dia.fecha` | ✅ |
+| `INSTALLED_APPS` está definido dos veces | `gestor_reservas/settings.py` | Líneas 33 y 125 | ✅ |
+| `crear_reservas_demo` borra todas las reservas | `reservas/management/commands/crear_reservas_demo.py` | Línea 24: `Booking.objects.all().delete()` | ✅ |
+| `Booking` tiene `unique_together` (resource, start_time, end_time) | `reservas/models.py` | Línea 54 | ✅ |
+
+**Resultado:** 7 de 7 afirmaciones verificadas como correctas. El análisis se acepta como base para planificar el trabajo.
