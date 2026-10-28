@@ -7,9 +7,14 @@ from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.utils.http import url_has_allowed_host_and_scheme
 from .models import Resource, Booking, Availability
-from .services.reservas import ConflictoHorario, ReservaInvalida, crear_reservas
+from .services.reservas import (
+    CancelacionNoPermitida, ConflictoHorario, ReservaInvalida,
+    cancelar_reserva as cancelar_reserva_servicio, crear_reservas, puede_cancelar,
+)
 
 
 # Horario por defecto (si no hay Availability definida)
@@ -85,7 +90,7 @@ def calendario_full(request, resource_id):
     """
     resource = get_object_or_404(Resource, id=resource_id)
 
-    reservas = Booking.objects.filter(resource=resource).order_by('start_time')
+    reservas = Booking.objects.activas().filter(resource=resource).order_by('start_time')
     bloqueos = Availability.objects.filter(resource=resource)
 
     # Lista de reservas
@@ -191,6 +196,11 @@ def login_view(request):
         user = authenticate(request, username=username, password=password)
         if user:
             login(request, user)
+            # Volver a la página que pidió el login, solo si es de este mismo sitio
+            next_url = request.GET.get('next', '')
+            if url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()},
+                                               require_https=request.is_secure()):
+                return redirect(next_url)
             return redirect('/')
         else:
             messages.error(request, "Usuario o contraseña incorrectos.")
@@ -206,9 +216,9 @@ def logout_view(request):
 
 def api_reservas(request, resource_id):
     """
-    API que devuelve todas las reservas de un recurso en formato JSON.
+    API que devuelve las reservas activas (no canceladas) de un recurso en formato JSON.
     """
-    reservas = Booking.objects.filter(resource_id=resource_id).order_by('start_time')
+    reservas = Booking.objects.activas().filter(resource_id=resource_id).order_by('start_time')
     eventos = [
         {
             "title": f"Reservado por {reserva.user.username}",
@@ -226,5 +236,46 @@ def home(request):
     """
     resources = Resource.objects.all()  # Obtenemos todas las pistas
     return render(request, 'reservas/home.html', {'resources': resources})
+
+
+@login_required
+def mis_reservas(request):
+    """
+    Reservas del usuario actual, separadas en próximas y pasadas.
+    """
+    ahora = timezone.now()
+    reservas = Booking.objects.filter(user=request.user).select_related('resource')
+
+    proximas = list(reservas.filter(start_time__gte=ahora).order_by('start_time'))
+    for reserva in proximas:
+        reserva.cancelable = puede_cancelar(reserva, ahora)
+    pasadas = list(reservas.filter(start_time__lt=ahora).order_by('-start_time'))
+
+    return render(request, 'reservas/mis_reservas.html', {
+        'proximas': proximas,
+        'pasadas': pasadas,
+    })
+
+
+@login_required
+@require_POST
+def cancelar_reserva(request, booking_id):
+    """
+    Cancela una reserva del usuario actual. Las reservas de otros usuarios dan 404.
+    """
+    booking = get_object_or_404(Booking.objects.select_related('resource'),
+                                pk=booking_id, user=request.user)
+    try:
+        cancelar_reserva_servicio(booking)
+    except CancelacionNoPermitida as e:
+        messages.error(request, str(e))
+    else:
+        inicio = timezone.localtime(booking.start_time)
+        messages.success(
+            request,
+            f'Reserva de {booking.resource.name} del {inicio:%d/%m/%Y a las %H:%M} cancelada. '
+            'La franja vuelve a estar disponible.'
+        )
+    return redirect('mis_reservas')
 
 
