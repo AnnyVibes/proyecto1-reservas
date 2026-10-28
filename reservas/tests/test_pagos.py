@@ -106,6 +106,13 @@ class ReservaConPagoTests(TestCase):
         self.assertEqual(PaymentMethod.objects.count(), 1)
         self.assertEqual(Payment.objects.filter(payment_method__isnull=False).count(), 2)
 
+    def test_guardar_tarjeta_con_duplicados_previos_no_falla(self):
+        """Si ya había tarjetas duplicadas guardadas, guardar otra vez no da error 500."""
+        self.metodo(); self.metodo()
+        response = self.reservar(tarjeta=TARJETA_DE_PRUEBA, guardar=True)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(PaymentMethod.objects.count(), 2)
+
     def test_numero_completo_y_cvv_no_se_guardan_en_la_bd(self):
         """Ni el número completo ni el CVV aparecen en ningún dato de la BD."""
         self.reservar(tarjeta=TARJETA_DE_PRUEBA, guardar=True)

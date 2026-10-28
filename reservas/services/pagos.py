@@ -116,11 +116,13 @@ def guardar_metodo(user, titular, numero, mes, anio):
     """
     numero = limpiar_numero(numero)
     mes, anio = _vencimiento(mes, anio)
-    metodo, _ = PaymentMethod.objects.get_or_create(
-        user=user, brand=detectar_marca(numero), last4=numero[-4:], exp_month=mes, exp_year=anio,
-        defaults={'holder_name': (titular or '').strip()[:100]},
-    )
-    return metodo
+    datos = {'user': user, 'brand': detectar_marca(numero), 'last4': numero[-4:],
+             'exp_month': mes, 'exp_year': anio}
+    # filter().first() y no get_or_create: no falla aunque ya existieran duplicados
+    existente = PaymentMethod.objects.filter(**datos).order_by('created_at').first()
+    if existente:
+        return existente
+    return PaymentMethod.objects.create(holder_name=(titular or '').strip()[:100], **datos)
 
 
 def importe_por_reserva(resource, inicio, fin):
