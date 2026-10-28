@@ -39,16 +39,14 @@ class Booking(models.Model):
 
     def clean(self):
         """
-        Validación para evitar que haya reservas solapadas con la misma franja horaria.
+        Validación para evitar que la reserva se solape con otra reserva o con un bloqueo.
         """
-        overlapping = Booking.objects.filter(
-            resource=self.resource,
-            start_time__lt=self.end_time,
-            end_time__gt=self.start_time
-        ).exclude(pk=self.pk)  # Excluimos la propia reserva al editar
+        # Import local para evitar una importación circular (el servicio importa los modelos)
+        from reservas.services.reservas import hay_conflicto
 
-        if overlapping.exists():
-            raise ValidationError("Ya existe una reserva en esta franja horaria.")
+        # Excluimos la propia reserva al editar
+        if hay_conflicto(self.resource, self.start_time, self.end_time, excluir_id=self.pk):
+            raise ValidationError("La franja horaria ya está reservada o bloqueada.")
 
     class Meta:
         unique_together = ('resource', 'start_time', 'end_time')

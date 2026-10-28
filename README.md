@@ -44,29 +44,62 @@ Por este motivo, el **diseño visual** no ha sido la prioridad en esta fase del 
 
 ## **Instalación**
 
+Requisitos: Python 3.12 o superior.
+
 ### **1. Clonar el repositorio**
 
-git clone https://github.com/tu-usuario/gestor-reservas.git
-cd gestor-reservas
-2. Crear entorno virtual
+```bash
+git clone https://github.com/AnnyVibes/proyecto1-reservas.git
+cd proyecto1-reservas
+```
 
-python -m venv .venv
-source .venv/bin/activate  # En Linux/Mac
-.venv\Scripts\activate     # En Windows
+### **2. Crear y activar el entorno virtual**
 
-3. Instalar dependencias
+```bash
+python -m venv venv
+source venv/Scripts/activate   # Windows (Git Bash)
+source venv/bin/activate       # Linux/Mac
+```
+
+### **3. Instalar dependencias**
+
+```bash
 pip install -r requirements.txt
+```
 
-4. Migrar la base de datos
-python manage.py makemigrations
+### **4. Crear la base de datos**
+
+La base de datos (`db.sqlite3`) no se versiona: cada persona crea la suya.
+
+```bash
 python manage.py migrate
+```
 
-6. Crear un superusuario (para acceder al panel admin)
+### **5. Cargar las pistas**
+
+```bash
+python manage.py loaddata pistas
+```
+
+### **6. Crear un superusuario (para acceder al panel admin)**
+
+```bash
 python manage.py createsuperuser
+```
 
-8. Ejecutar el servidor
+### **7. Ejecutar el servidor**
+
+```bash
 python manage.py runserver
+```
+
 Accede en tu navegador a http://127.0.0.1:8000/
+
+### **8. Ejecutar las pruebas**
+
+```bash
+python manage.py test
+```
 
 Uso de la aplicación
 Panel de administración:
