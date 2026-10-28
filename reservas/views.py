@@ -1,4 +1,5 @@
 import json
+from datetime import date, datetime, time
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -9,6 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils.http import url_has_allowed_host_and_scheme
 from .models import Resource, Booking, Availability
+from .services.disponibilidad import MAX_DIAS_RANGO, estado_dias
 from .services.reservas import (
     CancelacionNoPermitida, ConflictoHorario, ReservaInvalida,
     cancelar_reserva as cancelar_reserva_servicio, crear_reservas, puede_cancelar,
@@ -17,40 +19,14 @@ from .services.reservas import (
 
 def calendario_full(request, resource_id):
     """
-    Calendario interactivo con FullCalendar.
+    Calendario interactivo con FullCalendar. Reservas, bloqueos y disponibilidad
+    se cargan por API según el rango visible.
     """
     resource = get_object_or_404(Resource, id=resource_id)
-
-    reservas = Booking.objects.activas().filter(resource=resource).order_by('start_time')
-    bloqueos = Availability.objects.filter(resource=resource)
-
-    # Lista de reservas
-    reservas_json = [
-        {
-            "start": reserva.start_time.isoformat(),
-            "end": reserva.end_time.isoformat(),
-            "title": f"Reservado por {reserva.user.username}",
-            "color": "#10b981",  # Verde reservas
-        }
-        for reserva in reservas
-    ]
-
-    # Lista de bloqueos (rojo)
-    bloqueos_json = [
-        {
-            "start": bloqueo.start_time.isoformat(),
-            "end": bloqueo.end_time.isoformat(),
-        }
-        for bloqueo in bloqueos
-    ]
-
     return render(request, 'reservas/calendario_full.html', {
         'resource': resource,
-        'reservas_json': json.dumps(reservas_json),
-        'bloqueos_json': json.dumps(bloqueos_json),
         'is_authenticated': request.user.is_authenticated,
     })
-
 
 
 def _error(mensaje, status):
@@ -146,21 +122,104 @@ def logout_view(request):
     logout(request)
     return redirect('/login/')
 
+def _leer_dia(valor):
+    """
+    Lee 'YYYY-MM-DD' o el formato con hora que envía FullCalendar
+    ('YYYY-MM-DDTHH:MM:SS-05:00'); devuelve la fecha o None si no es válida.
+    """
+    try:
+        return date.fromisoformat((valor or '')[:10])
+    except ValueError:
+        return None
+
+
+def _leer_rango(request):
+    """
+    Devuelve (desde, hasta) de los parámetros start/end (hasta exclusivo),
+    (None, None) si no se enviaron, o lanza ValueError si no son válidos.
+    """
+    if 'start' not in request.GET and 'end' not in request.GET:
+        return None, None
+    desde = _leer_dia(request.GET.get('start'))
+    hasta = _leer_dia(request.GET.get('end'))
+    if desde is None or hasta is None or hasta <= desde:
+        raise ValueError
+    return desde, hasta
+
+
+def _filtrar_rango(queryset, desde, hasta):
+    if desde is None:
+        return queryset
+    inicio = timezone.make_aware(datetime.combine(desde, time.min))
+    fin = timezone.make_aware(datetime.combine(hasta, time.min))
+    return queryset.filter(start_time__lt=fin, end_time__gt=inicio)
+
+
 def api_reservas(request, resource_id):
     """
-    API que devuelve las reservas activas (no canceladas) de un recurso en formato JSON.
+    Reservas activas (no canceladas) de un recurso en el rango start/end, para FullCalendar.
+    No expone quién reservó: las propias se marcan como "Tu reserva".
     """
-    reservas = Booking.objects.activas().filter(resource_id=resource_id).order_by('start_time')
+    try:
+        desde, hasta = _leer_rango(request)
+    except ValueError:
+        return _error('Rango de fechas inválido (start/end en formato YYYY-MM-DD).', 400)
+
+    reservas = _filtrar_rango(
+        Booking.objects.activas().filter(resource_id=resource_id), desde, hasta
+    ).order_by('start_time')
     eventos = [
         {
-            "title": f"Reservado por {reserva.user.username}",
+            "title": "Tu reserva" if reserva.user_id == request.user.id else "Reservado",
             "start": reserva.start_time.isoformat(),
             "end": reserva.end_time.isoformat(),
-            "color": "#10b981",  # Verde
+            "color": "#2563eb" if reserva.user_id == request.user.id else "#10b981",
         }
         for reserva in reservas
     ]
     return JsonResponse(eventos, safe=False)
+
+
+def api_bloqueos(request, resource_id):
+    """
+    Bloqueos (Availability) de un recurso en el rango start/end, para FullCalendar.
+    """
+    try:
+        desde, hasta = _leer_rango(request)
+    except ValueError:
+        return _error('Rango de fechas inválido (start/end en formato YYYY-MM-DD).', 400)
+
+    bloqueos = _filtrar_rango(Availability.objects.filter(resource_id=resource_id), desde, hasta)
+    eventos = [
+        {
+            "title": "Bloqueado",
+            "start": bloqueo.start_time.isoformat(),
+            "end": bloqueo.end_time.isoformat(),
+            "color": "#ef4444",
+        }
+        for bloqueo in bloqueos.order_by('start_time')
+    ]
+    return JsonResponse(eventos, safe=False)
+
+
+def api_disponibilidad(request, resource_id):
+    """
+    Estado de cada día (libre, parcial, completo, pasado) en el rango start/end.
+    Máximo MAX_DIAS_RANGO días.
+    """
+    resource = Resource.objects.filter(pk=resource_id).first()
+    if resource is None:
+        return _error('La pista no existe.', 404)
+    try:
+        desde, hasta = _leer_rango(request)
+    except ValueError:
+        desde = None
+    if desde is None:
+        return _error('Rango de fechas inválido (start/end en formato YYYY-MM-DD).', 400)
+    if (hasta - desde).days > MAX_DIAS_RANGO:
+        return _error(f'El rango no puede superar {MAX_DIAS_RANGO} días.', 400)
+    return JsonResponse(estado_dias(resource, desde, hasta), safe=False)
+
 
 def home(request):
     """
