@@ -98,6 +98,14 @@ class ReservaConPagoTests(TestCase):
         self.assertIsNotNone(metodo.token)
         self.assertEqual(Payment.objects.get().payment_method, metodo)
 
+    def test_guardar_la_misma_tarjeta_no_la_duplica(self):
+        """Guardar otra vez la misma tarjeta reutiliza la ya guardada (sin duplicados)."""
+        self.reservar(tarjeta=TARJETA_DE_PRUEBA, guardar=True)
+        self.inicio, self.fin = franja(1, 12), franja(1, 13)
+        self.assertEqual(self.reservar(tarjeta=TARJETA_DE_PRUEBA, guardar=True).status_code, 201)
+        self.assertEqual(PaymentMethod.objects.count(), 1)
+        self.assertEqual(Payment.objects.filter(payment_method__isnull=False).count(), 2)
+
     def test_numero_completo_y_cvv_no_se_guardan_en_la_bd(self):
         """Ni el número completo ni el CVV aparecen en ningún dato de la BD."""
         self.reservar(tarjeta=TARJETA_DE_PRUEBA, guardar=True)

@@ -110,13 +110,17 @@ def procesar_pago_simulado(monto, numero=None, metodo=None):
 
 
 def guardar_metodo(user, titular, numero, mes, anio):
-    """Guarda solo titular, marca, últimos 4 dígitos, vencimiento y un token generado."""
+    """
+    Guarda solo titular, marca, últimos 4 dígitos, vencimiento y un token generado.
+    Si el usuario ya tiene guardada la misma tarjeta (marca, últimos 4 y vencimiento), la reutiliza.
+    """
     numero = limpiar_numero(numero)
     mes, anio = _vencimiento(mes, anio)
-    return PaymentMethod.objects.create(
-        user=user, holder_name=(titular or '').strip()[:100], brand=detectar_marca(numero),
-        last4=numero[-4:], exp_month=mes, exp_year=anio,
+    metodo, _ = PaymentMethod.objects.get_or_create(
+        user=user, brand=detectar_marca(numero), last4=numero[-4:], exp_month=mes, exp_year=anio,
+        defaults={'holder_name': (titular or '').strip()[:100]},
     )
+    return metodo
 
 
 def importe_por_reserva(resource, inicio, fin):
