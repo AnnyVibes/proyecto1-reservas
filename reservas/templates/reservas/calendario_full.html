@@ -120,6 +120,9 @@
     <!-- Botón para actualizar eventos -->
     <button id="btn-refresh">🔄 Actualizar Reservas</button>
     
+    <!-- Genera la cookie csrftoken que el JS envía en la cabecera X-CSRFToken -->
+    {% csrf_token %}
+
     <!-- Contenedor del calendario con data-resource-id y user-logged -->
     <div id='calendar' 
          data-resource-id="{{ resource.id }}" 
