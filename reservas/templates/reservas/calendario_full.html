@@ -172,6 +172,15 @@
                 slotMinTime: "09:00:00", // Horario inicial
                 slotMaxTime: "21:00:00", // Horario final
                 slotDuration: "01:00:00",
+                allDaySlot: false, // Las reservas son por horas: sin fila "todo el día"
+                // Igual que el servidor: solo franjas dentro de un mismo día, entre 09:00 y 21:00
+                selectAllow: function(info) {
+                    if (info.allDay) return false;
+                    const minutos = d => d.getHours() * 60 + d.getMinutes();
+                    return info.start.toDateString() === info.end.toDateString()
+                        && minutos(info.start) >= 9 * 60
+                        && minutos(info.end) <= 21 * 60;
+                },
                 select: function(info) {
                     const start = new Date(info.startStr);
                     const end = new Date(info.endStr);
