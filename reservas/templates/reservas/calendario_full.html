@@ -141,6 +141,21 @@
             const reservas = JSON.parse('{{ reservas_json|escapejs }}');
             const bloqueos = JSON.parse('{{ bloqueos_json|escapejs }}');
 
+            // Horario de reservas (el mismo que valida el servidor)
+            const HORA_INICIO = 9;
+            const HORA_FIN = 21;
+
+            // Fecha en ISO con la zona horaria del navegador, p. ej. 2026-10-29T09:00:00-05:00
+            function fechaISO(d) {
+                const dos = n => String(n).padStart(2, '0');
+                const offset = -d.getTimezoneOffset();
+                const signo = offset >= 0 ? '+' : '-';
+                const abs = Math.abs(offset);
+                return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`
+                    + `T${dos(d.getHours())}:${dos(d.getMinutes())}:${dos(d.getSeconds())}`
+                    + `${signo}${dos(Math.floor(abs / 60))}:${dos(abs % 60)}`;
+            }
+
             // Verifica si hay bloqueo del admin
             function isBlocked(start, end) {
                 for (const b of bloqueos) {
@@ -172,18 +187,32 @@
                 slotMinTime: "09:00:00", // Horario inicial
                 slotMaxTime: "21:00:00", // Horario final
                 slotDuration: "01:00:00",
-                allDaySlot: false, // Las reservas son por horas: sin fila "todo el día"
-                // Igual que el servidor: solo franjas dentro de un mismo día, entre 09:00 y 21:00
+                // Solo un día a la vez: en la fila "todo el día" un único día;
+                // en las horas, franjas dentro de un mismo día entre 09:00 y 21:00
                 selectAllow: function(info) {
-                    if (info.allDay) return false;
+                    if (info.allDay) {
+                        const siguiente = new Date(info.start);
+                        siguiente.setDate(siguiente.getDate() + 1);
+                        return info.end.getTime() === siguiente.getTime();
+                    }
                     const minutos = d => d.getHours() * 60 + d.getMinutes();
                     return info.start.toDateString() === info.end.toDateString()
-                        && minutos(info.start) >= 9 * 60
-                        && minutos(info.end) <= 21 * 60;
+                        && minutos(info.start) >= HORA_INICIO * 60
+                        && minutos(info.end) <= HORA_FIN * 60;
                 },
                 select: function(info) {
-                    const start = new Date(info.startStr);
-                    const end = new Date(info.endStr);
+                    let start = new Date(info.startStr);
+                    let end = new Date(info.endStr);
+                    let mensaje = `¿Quieres crear una reserva desde ${info.startStr} hasta ${info.endStr}?`;
+
+                    // "Todo el día" se reserva como una sola franja de 09:00 a 21:00 de ese día
+                    if (info.allDay) {
+                        start = new Date(info.start);
+                        start.setHours(HORA_INICIO, 0, 0, 0);
+                        end = new Date(info.start);
+                        end.setHours(HORA_FIN, 0, 0, 0);
+                        mensaje = `¿Quieres reservar todo el día ${start.toLocaleDateString('es')} de 09:00 a 21:00?`;
+                    }
 
                     if (isBlocked(start, end)) {
                         alert("Esta franja horaria está bloqueada por el administrador.");
@@ -200,8 +229,8 @@
                         return;
                     }
 
-                    if (confirm(`¿Quieres crear una reserva desde ${info.startStr} hasta ${info.endStr}?`)) {
-                        crearReserva(info.startStr, info.endStr);
+                    if (confirm(mensaje)) {
+                        crearReserva(fechaISO(start), fechaISO(end));
                     }
                 },
                 eventSources: [
