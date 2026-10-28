@@ -60,6 +60,16 @@ class MisReservasTests(TestCase):
         self.assertContains(response, 'Cancelada')
         self.assertNotContains(response, reverse('cancelar_reserva', args=[cancelada.id]))
 
+    def test_enlace_mis_reservas_solo_con_sesion(self):
+        """La barra de navegación muestra "Mis reservas" solo cuando hay sesión."""
+        enlace = f'href="{reverse("mis_reservas")}"'
+        for url in (reverse('home'), reverse('calendario_full', args=[self.resource.id])):
+            with self.subTest(url=url):
+                self.client.force_login(self.user)
+                self.assertContains(self.client.get(url), enlace)
+                self.client.logout()
+                self.assertNotContains(self.client.get(url), enlace)
+
     # --- Cancelación ---
 
     def test_cancelacion_valida(self):

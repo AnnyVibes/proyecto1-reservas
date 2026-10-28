@@ -102,6 +102,7 @@
         <div class="nav-right">
             {% if is_authenticated %}
                 <span class="user-info">Hola, {{ user.username }}</span>
+                <a href="{% url 'mis_reservas' %}">Mis reservas</a>
                 <a href="/logout/" class="btn-logout">Cerrar Sesión</a>
             {% else %}
                 <a href="/login/" class="btn-login">Iniciar Sesión</a>
