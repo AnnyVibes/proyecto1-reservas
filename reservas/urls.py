@@ -15,6 +15,7 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('mis-reservas/', views.mis_reservas, name='mis_reservas'),
     path('reservas/<int:booking_id>/cancelar/', views.cancelar_reserva, name='cancelar_reserva'),
+    path('panel/demanda/', views.panel_demanda, name='panel_demanda'),
 
 
 

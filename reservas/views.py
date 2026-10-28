@@ -1,15 +1,17 @@
 import json
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils.http import url_has_allowed_host_and_scheme
 from .models import Resource, Booking, Availability
+from .services.demanda import ocupacion_por_dia_hora, prevision_promedio_movil, reservas_por_semana
 from .services.disponibilidad import MAX_DIAS_RANGO, estado_dias
 from .services.reservas import (
     CancelacionNoPermitida, ConflictoHorario, ReservaInvalida,
@@ -270,3 +272,59 @@ def cancelar_reserva(request, booking_id):
     return redirect('mis_reservas')
 
 
+SEMANAS_HISTORICO = 12
+VENTANA_PREVISION = 4
+HORIZONTE_PREVISION = 4
+
+
+@staff_member_required
+def panel_demanda(request):
+    """
+    Panel para el administrador: histórico semanal, previsión por promedio móvil
+    y ocupación por día de la semana y hora. Se puede filtrar por pista (?pista=<id>).
+    """
+    pista = None
+    pista_id = request.GET.get('pista')
+    if pista_id:
+        if not pista_id.isdigit():
+            raise Http404
+        pista = get_object_or_404(Resource, pk=pista_id)
+
+    semanas = reservas_por_semana(pista, SEMANAS_HISTORICO)
+    serie = [s['total'] for s in semanas]
+    prevision = prevision_promedio_movil(serie, VENTANA_PREVISION, HORIZONTE_PREVISION)
+    hoy = timezone.localdate()
+    lunes_actual = hoy - timedelta(days=hoy.weekday())
+    semanas_futuras = [(lunes_actual + timedelta(weeks=i)).isoformat() for i in range(HORIZONTE_PREVISION)]
+
+    # Mapa de calor: intensidad de cada celda respecto al máximo
+    ocupacion = ocupacion_por_dia_hora(pista)
+    maximo = max((v for fila in ocupacion['matriz'] for v in fila), default=0) or 1
+    filas_calor = [
+        (dia, [(v, round(v / maximo, 2)) for v in fila])
+        for dia, fila in zip(ocupacion['dias'], ocupacion['matriz'])
+    ]
+    franja_top = None
+    if any(v for fila in ocupacion['matriz'] for v in fila):
+        _, d, h = max((v, d, h) for d, fila in enumerate(ocupacion['matriz']) for h, v in enumerate(fila))
+        franja_top = f"{ocupacion['dias'][d]} a las {ocupacion['horas'][h]:02d}:00"
+
+    return render(request, 'reservas/panel_demanda.html', {
+        'pistas': Resource.objects.order_by('name'),
+        'pista': pista,
+        'semanas': semanas,
+        'prevision': prevision,
+        'total_historico': sum(serie),
+        'promedio_ventana': prevision[0] if prevision else 0,
+        'ventana': VENTANA_PREVISION,
+        'semanas_historico': SEMANAS_HISTORICO,
+        'horas': ocupacion['horas'],
+        'filas_calor': filas_calor,
+        'franja_top': franja_top,
+        'datos_grafico': {
+            'etiquetas': [s['semana'] for s in semanas] + semanas_futuras,
+            'historico': serie + [None] * HORIZONTE_PREVISION,
+            # La línea de previsión arranca en la última semana real para que se vean unidas
+            'prevision': [None] * (len(serie) - 1) + ([serie[-1]] if serie else []) + prevision,
+        },
+    })
