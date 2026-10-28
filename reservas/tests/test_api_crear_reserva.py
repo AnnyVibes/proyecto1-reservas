@@ -109,6 +109,15 @@ class ApiCrearReservaTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Booking.objects.count(), 0)
 
+    def test_fuera_del_horario_devuelve_400(self):
+        """Solo se puede reservar entre las 09:00 y las 21:00 (400 fuera de ese horario)."""
+        for hora in (8, 21):
+            with self.subTest(hora=hora):
+                inicio = franja(1, hora)
+                response = self.post(inicio, inicio + timedelta(hours=1))
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(Booking.objects.count(), 0)
+
     def test_post_sin_token_csrf_devuelve_403(self):
         """La API exige el token CSRF: un POST sin token se rechaza (403)."""
         csrf_client = Client(enforce_csrf_checks=True)
