@@ -303,6 +303,15 @@
                     abrirModal(start, end, info.allDay);
                 },
 
+                // En el mes, pulsar sobre una reserva también abre ese día (si se puede reservar)
+                eventClick: function(info) {
+                    if (calendar.view.type !== 'dayGridMonth') return;
+                    const dia = estadoPorDia[fechaDia(info.event.start)];
+                    if (dia && (dia.estado === 'libre' || dia.estado === 'parcial')) {
+                        calendar.changeView('timeGridDay', fechaDia(info.event.start));
+                    }
+                },
+
                 // FullCalendar añade start/end del rango visible a cada petición
                 eventSources: [
                     {
