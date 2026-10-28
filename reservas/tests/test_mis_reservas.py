@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from reservas.models import Booking, Resource
-from reservas.tests.test_api_crear_reserva import franja
+from reservas.tests.test_api_crear_reserva import TARJETA_DE_PRUEBA, franja
 
 
 class MisReservasTests(TestCase):
@@ -160,6 +160,7 @@ class MisReservasTests(TestCase):
             'start_time': inicio.isoformat(),
             'end_time': fin.isoformat(),
             'repeat_weeks': 0,
+            'tarjeta': TARJETA_DE_PRUEBA,
         }), content_type='application/json')
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Booking.objects.filter(status=Booking.Status.CONFIRMADA).count(), 1)
