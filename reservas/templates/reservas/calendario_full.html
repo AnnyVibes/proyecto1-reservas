@@ -72,9 +72,9 @@
 
             <dl class="grid grid-cols-3 gap-y-1 text-sm mb-4">
                 <dt class="text-gray-600">Pista</dt><dd class="col-span-2 font-medium">{{ resource.name }}</dd>
-                <dt class="text-gray-600">Fecha</dt><dd id="modal-fecha" class="col-span-2 font-medium capitalize"></dd>
+                <dt class="text-gray-600">Fecha</dt><dd id="modal-fecha" class="col-span-2 font-medium"></dd>
                 <dt class="text-gray-600">Horario</dt><dd id="modal-horario" class="col-span-2 font-medium"></dd>
-                <dt class="text-gray-600">Precio</dt><dd class="col-span-2 font-medium">${{ resource.price_per_hour }} / hora</dd>
+                <dt class="text-gray-600">Precio</dt><dd class="col-span-2 font-medium">${{ resource.price_per_hour|stringformat:".2f" }} / hora</dd>
             </dl>
 
             <label for="modal-repetir" class="block text-sm font-medium mb-1">Repetir cada semana</label>
@@ -369,8 +369,8 @@
 
             function abrirModal(start, end, todoElDia) {
                 pendiente = { start, end };
-                document.getElementById('modal-fecha').textContent =
-                    start.toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                const fecha = start.toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                document.getElementById('modal-fecha').textContent = fecha.charAt(0).toUpperCase() + fecha.slice(1);
                 document.getElementById('modal-horario').textContent =
                     `de ${hora(start)} a ${hora(end)}` + (todoElDia ? ' (todo el día)' : '');
                 repetir.value = '0';

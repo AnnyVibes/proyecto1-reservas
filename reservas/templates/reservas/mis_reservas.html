@@ -34,7 +34,7 @@
                                 <span class="px-2 py-1 rounded text-sm bg-green-100 text-green-800">Confirmada</span>
                             {% endif %}
                         </td>
-                        <td class="p-3 text-sm">{% if reserva.payment %}${{ reserva.payment.amount }} <span class="text-gray-500">· {{ reserva.payment.reference }}</span>{% else %}—{% endif %}</td>
+                        <td class="p-3 text-sm">{% if reserva.payment %}${{ reserva.payment.amount|stringformat:".2f" }} <span class="text-gray-500">· {{ reserva.payment.reference }}</span>{% else %}—{% endif %}</td>
                         <td class="p-3 text-right">
                             {% if reserva.cancelable %}
                                 <form method="post" action="{% url 'cancelar_reserva' reserva.id %}"
@@ -76,7 +76,7 @@
                         <td class="p-3">{{ reserva.start_time|date:"D d/m/Y" }}</td>
                         <td class="p-3">{{ reserva.start_time|time:"H:i" }} – {{ reserva.end_time|time:"H:i" }}</td>
                         <td class="p-3">{{ reserva.get_status_display }}</td>
-                        <td class="p-3 text-sm">{% if reserva.payment %}${{ reserva.payment.amount }} <span class="text-gray-500">· {{ reserva.payment.reference }}</span>{% else %}—{% endif %}</td>
+                        <td class="p-3 text-sm">{% if reserva.payment %}${{ reserva.payment.amount|stringformat:".2f" }} <span class="text-gray-500">· {{ reserva.payment.reference }}</span>{% else %}—{% endif %}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
