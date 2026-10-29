@@ -1,19 +1,22 @@
 import json
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils.http import url_has_allowed_host_and_scheme
-from .models import Resource, Booking, Availability
+from .models import Resource, Booking, Availability, PaymentMethod
+from .services.demanda import ocupacion_por_dia_hora, prevision_promedio_movil, reservas_por_semana
 from .services.disponibilidad import MAX_DIAS_RANGO, estado_dias
+from .services.pagos import MetodoNoEncontrado, PagoInvalido, PagoRechazado, reservar_y_pagar
 from .services.reservas import (
-    CancelacionNoPermitida, ConflictoHorario, ReservaInvalida,
-    cancelar_reserva as cancelar_reserva_servicio, crear_reservas, puede_cancelar,
+    MAX_SEMANAS_REPETICION, CancelacionNoPermitida, ConflictoHorario, ReservaInvalida,
+    cancelar_reserva as cancelar_reserva_servicio, puede_cancelar,
 )
 
 
@@ -23,9 +26,19 @@ def calendario_full(request, resource_id):
     se cargan por API según el rango visible.
     """
     resource = get_object_or_404(Resource, id=resource_id)
+    tarjetas = []
+    if request.user.is_authenticated:
+        tarjetas = [
+            {'id': t.id, 'marca': t.get_brand_display(), 'last4': t.last4,
+             'vence': f'{t.exp_month:02d}/{t.exp_year % 100:02d}'}
+            for t in request.user.payment_methods.order_by('-created_at')
+        ]
     return render(request, 'reservas/calendario_full.html', {
         'resource': resource,
         'is_authenticated': request.user.is_authenticated,
+        'tarjetas': tarjetas,
+        'datos_pago': {'precio_hora': str(resource.price_per_hour), 'tarjetas': tarjetas},
+        'semanas_repeticion': range(1, MAX_SEMANAS_REPETICION + 1),
     })
 
 
@@ -77,12 +90,22 @@ def api_crear_reserva(request):
     except (TypeError, ValueError, Resource.DoesNotExist):
         return _error('La pista no existe.', 404)
 
+    # Pago: tarjeta guardada (payment_method_id) o tarjeta nueva (tarjeta + guardar)
     try:
-        reservas = crear_reservas(request.user, resource, inicio, fin, repeat_weeks)
-    except ReservaInvalida as e:
+        reservas, pagos, metodo = reservar_y_pagar(
+            request.user, resource, inicio, fin, repeat_weeks,
+            payment_method_id=data.get('payment_method_id'),
+            tarjeta=data.get('tarjeta'),
+            guardar=data.get('guardar') is True,
+        )
+    except (ReservaInvalida, PagoInvalido) as e:
         return _error(str(e), 400)
+    except MetodoNoEncontrado as e:
+        return _error(str(e), 404)
     except ConflictoHorario as e:
         return _error(str(e), 409)
+    except PagoRechazado as e:
+        return _error(str(e), 402)
 
     return JsonResponse({
         'success': True,
@@ -90,6 +113,11 @@ def api_crear_reserva(request):
             {'start': r.start_time.isoformat(), 'end': r.end_time.isoformat()}
             for r in reservas
         ],
+        'pago': {
+            'importe': str(sum(p.amount for p in pagos)),
+            'referencia': pagos[0].reference.rsplit('-', 1)[0],
+            'tarjeta': str(metodo) if metodo else 'Tarjeta no guardada',
+        },
     }, status=201)
 
 
@@ -235,7 +263,7 @@ def mis_reservas(request):
     Reservas del usuario actual, separadas en próximas y pasadas.
     """
     ahora = timezone.now()
-    reservas = Booking.objects.filter(user=request.user).select_related('resource')
+    reservas = Booking.objects.filter(user=request.user).select_related('resource', 'payment')
 
     proximas = list(reservas.filter(start_time__gte=ahora).order_by('start_time'))
     for reserva in proximas:
@@ -270,3 +298,83 @@ def cancelar_reserva(request, booking_id):
     return redirect('mis_reservas')
 
 
+
+@login_required
+def mis_tarjetas(request):
+    """
+    Tarjetas guardadas del usuario (solo marca, últimos 4 y vencimiento).
+    """
+    return render(request, 'reservas/mis_tarjetas.html', {
+        'tarjetas': PaymentMethod.objects.filter(user=request.user).order_by('-created_at'),
+    })
+
+
+@login_required
+@require_POST
+def eliminar_tarjeta(request, tarjeta_id):
+    """
+    Elimina una tarjeta guardada del usuario. Las de otros usuarios dan 404.
+    Los pagos ya hechos se conservan (quedan sin tarjeta asociada).
+    """
+    tarjeta = get_object_or_404(PaymentMethod, pk=tarjeta_id, user=request.user)
+    descripcion = str(tarjeta)
+    tarjeta.delete()
+    messages.success(request, f'Se eliminó la tarjeta {descripcion}.')
+    return redirect('mis_tarjetas')
+
+SEMANAS_HISTORICO = 12
+VENTANA_PREVISION = 4
+HORIZONTE_PREVISION = 4
+
+
+@staff_member_required
+def panel_demanda(request):
+    """
+    Panel para el administrador: histórico semanal, previsión por promedio móvil
+    y ocupación por día de la semana y hora. Se puede filtrar por pista (?pista=<id>).
+    """
+    pista = None
+    pista_id = request.GET.get('pista')
+    if pista_id:
+        if not pista_id.isdigit():
+            raise Http404
+        pista = get_object_or_404(Resource, pk=pista_id)
+
+    semanas = reservas_por_semana(pista, SEMANAS_HISTORICO)
+    serie = [s['total'] for s in semanas]
+    prevision = prevision_promedio_movil(serie, VENTANA_PREVISION, HORIZONTE_PREVISION)
+    hoy = timezone.localdate()
+    lunes_actual = hoy - timedelta(days=hoy.weekday())
+    semanas_futuras = [(lunes_actual + timedelta(weeks=i)).isoformat() for i in range(HORIZONTE_PREVISION)]
+
+    # Mapa de calor: intensidad de cada celda respecto al máximo
+    ocupacion = ocupacion_por_dia_hora(pista)
+    maximo = max((v for fila in ocupacion['matriz'] for v in fila), default=0) or 1
+    filas_calor = [
+        (dia, [(v, round(v / maximo, 2)) for v in fila])
+        for dia, fila in zip(ocupacion['dias'], ocupacion['matriz'])
+    ]
+    franja_top = None
+    if any(v for fila in ocupacion['matriz'] for v in fila):
+        _, d, h = max((v, d, h) for d, fila in enumerate(ocupacion['matriz']) for h, v in enumerate(fila))
+        franja_top = f"{ocupacion['dias'][d]} a las {ocupacion['horas'][h]:02d}:00"
+
+    return render(request, 'reservas/panel_demanda.html', {
+        'pistas': Resource.objects.order_by('name'),
+        'pista': pista,
+        'semanas': semanas,
+        'prevision': prevision,
+        'total_historico': sum(serie),
+        'promedio_ventana': prevision[0] if prevision else 0,
+        'ventana': VENTANA_PREVISION,
+        'semanas_historico': SEMANAS_HISTORICO,
+        'horas': ocupacion['horas'],
+        'filas_calor': filas_calor,
+        'franja_top': franja_top,
+        'datos_grafico': {
+            'etiquetas': [s['semana'] for s in semanas] + semanas_futuras,
+            'historico': serie + [None] * HORIZONTE_PREVISION,
+            # La línea de previsión arranca en la última semana real para que se vean unidas
+            'prevision': [None] * (len(serie) - 1) + ([serie[-1]] if serie else []) + prevision,
+        },
+    })
