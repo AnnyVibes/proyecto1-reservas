@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from reservas.models import Availability, Booking
+from reservas.services.notificaciones import enviar_cancelacion
 
 FRANJA_INICIO = 9    # 09:00
 FRANJA_FIN = 21      # 21:00
@@ -114,4 +115,5 @@ def cancelar_reserva(booking):
         booking.status = Booking.Status.CANCELADA
         booking.cancelled_at = ahora
         booking.save(update_fields=['status', 'cancelled_at'])
+        transaction.on_commit(lambda: enviar_cancelacion(booking))
     return booking

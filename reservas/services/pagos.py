@@ -10,6 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from reservas.models import Payment, PaymentMethod
+from reservas.services.notificaciones import enviar_confirmacion
 from reservas.services.reservas import crear_reservas
 
 # Tarjeta de prueba que el procesador simulado SIEMPRE rechaza
@@ -177,4 +178,6 @@ def reservar_y_pagar(user, resource, inicio, fin, repetir_semanas=0,
             )
             for i, reserva in enumerate(reservas, start=1)
         ]
+        # Solo se envía si la transacción se confirma (si se revierte, no hay correo)
+        transaction.on_commit(lambda: enviar_confirmacion(reservas))
     return reservas, pagos, metodo

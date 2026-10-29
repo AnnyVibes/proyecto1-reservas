@@ -1,0 +1,10 @@
+{% autoescape off %}Hola {{ usuario.username }}:
+
+Tu reserva en {{ pista.name }} ha sido cancelada.
+
+- {{ reserva.start_time|date:"l d/m/Y" }}, de {{ reserva.start_time|time:"H:i" }} a {{ reserva.end_time|time:"H:i" }} · Referencia: {{ referencia }}
+
+La franja vuelve a estar disponible para otros usuarios.
+
+Gestor de Reservas
+{% endautoescape %}
