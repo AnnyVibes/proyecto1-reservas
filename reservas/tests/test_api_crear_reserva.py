@@ -9,6 +9,13 @@ from django.utils import timezone
 from reservas.models import Availability, Booking, Resource
 
 
+# Tarjeta de prueba válida (Luhn) que el pago simulado aprueba
+TARJETA_DE_PRUEBA = {
+    'titular': 'Ana Prueba', 'numero': '4242 4242 4242 4242',
+    'mes': 12, 'anio': timezone.localdate().year + 2, 'cvv': '987',
+}
+
+
 def franja(dias, hora):
     """Devuelve el inicio de la franja de `hora` dentro de `dias` días (hora local, con zona)."""
     fecha = timezone.localdate() + timedelta(days=dias)
@@ -28,6 +35,7 @@ class ApiCrearReservaTests(TestCase):
             'start_time': inicio.isoformat(),
             'end_time': fin.isoformat(),
             'repeat_weeks': repeat_weeks,
+            'tarjeta': TARJETA_DE_PRUEBA,   # HU-01: reservar exige un método de pago
         })
 
     def post(self, inicio, fin, client=None, **kwargs):

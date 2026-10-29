@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+
+{% block title %}Mis reservas{% endblock %}
+
+{% block content %}
+    <h1 class="text-2xl font-bold mb-6">Mis reservas</h1>
+
+    <!-- PRÓXIMAS -->
+    <h3 class="text-xl font-semibold mb-1">Próximas</h3>
+    <p class="text-sm text-gray-600 mb-3">Puedes cancelar una reserva hasta 2 horas antes de que empiece.</p>
+    {% if proximas %}
+        <div class="bg-white rounded-lg shadow-md overflow-x-auto mb-8">
+            <table class="w-full text-left">
+                <thead class="bg-gray-50 text-sm text-gray-600">
+                    <tr>
+                        <th class="p-3">Pista</th>
+                        <th class="p-3">Fecha</th>
+                        <th class="p-3">Horario</th>
+                        <th class="p-3">Estado</th>
+                        <th class="p-3">Pago</th>
+                        <th class="p-3"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for reserva in proximas %}
+                    <tr class="border-t">
+                        <td class="p-3">{{ reserva.resource.name }}</td>
+                        <td class="p-3">{{ reserva.start_time|date:"D d/m/Y" }}</td>
+                        <td class="p-3">{{ reserva.start_time|time:"H:i" }} – {{ reserva.end_time|time:"H:i" }}</td>
+                        <td class="p-3">
+                            {% if reserva.status == 'cancelada' %}
+                                <span class="px-2 py-1 rounded text-sm bg-gray-200 text-gray-700">Cancelada</span>
+                            {% else %}
+                                <span class="px-2 py-1 rounded text-sm bg-green-100 text-green-800">Confirmada</span>
+                            {% endif %}
+                        </td>
+                        <td class="p-3 text-sm">{% if reserva.payment %}${{ reserva.payment.amount|stringformat:".2f" }} <span class="text-gray-500">· {{ reserva.payment.reference }}</span>{% else %}—{% endif %}</td>
+                        <td class="p-3 text-right">
+                            {% if reserva.cancelable %}
+                                <form method="post" action="{% url 'cancelar_reserva' reserva.id %}"
+                                      onsubmit="return confirm('¿Seguro que quieres cancelar esta reserva?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Cancelar</button>
+                                </form>
+                            {% elif reserva.status == 'confirmada' %}
+                                <span class="text-sm text-gray-500">Fuera de plazo para cancelar</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="mb-8 text-gray-600">No tienes reservas próximas. <a href="{% url 'home' %}" class="text-blue-600 underline">Reservar una pista</a></p>
+    {% endif %}
+
+    <!-- PASADAS -->
+    <h3 class="text-xl font-semibold mb-3">Pasadas</h3>
+    {% if pasadas %}
+        <div class="bg-white rounded-lg shadow-md overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-50 text-sm text-gray-600">
+                    <tr>
+                        <th class="p-3">Pista</th>
+                        <th class="p-3">Fecha</th>
+                        <th class="p-3">Horario</th>
+                        <th class="p-3">Estado</th>
+                        <th class="p-3">Pago</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-600">
+                    {% for reserva in pasadas %}
+                    <tr class="border-t">
+                        <td class="p-3">{{ reserva.resource.name }}</td>
+                        <td class="p-3">{{ reserva.start_time|date:"D d/m/Y" }}</td>
+                        <td class="p-3">{{ reserva.start_time|time:"H:i" }} – {{ reserva.end_time|time:"H:i" }}</td>
+                        <td class="p-3">{{ reserva.get_status_display }}</td>
+                        <td class="p-3 text-sm">{% if reserva.payment %}${{ reserva.payment.amount|stringformat:".2f" }} <span class="text-gray-500">· {{ reserva.payment.reference }}</span>{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="text-gray-600">No tienes reservas pasadas.</p>
+    {% endif %}
+{% endblock %}

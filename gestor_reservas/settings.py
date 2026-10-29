@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -121,3 +122,11 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Vista de login propia (reservas.views.login_view); la usa @login_required
+LOGIN_URL = "login"
+
+# Correo: en desarrollo se muestra en la consola. Para un servidor real, definir
+# EMAIL_BACKEND (p. ej. django.core.mail.backends.smtp.EmailBackend) y las variables EMAIL_*.
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+DEFAULT_FROM_EMAIL = "reservas@gestor.local"
