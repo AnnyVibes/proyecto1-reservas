@@ -18,8 +18,9 @@
                 <a href="{% url 'home' %}" class="px-3 py-2 rounded hover:bg-blue-600">Pistas</a>
                 {% if user.is_authenticated %}
                     <a href="{% url 'mis_reservas' %}" class="px-3 py-2 rounded hover:bg-blue-600">Mis reservas</a>
-                    {% block nav_extra %}{% endblock %}
+                    <a href="{% url 'mis_tarjetas' %}" class="px-3 py-2 rounded hover:bg-blue-600">Mis tarjetas</a>
                     {% if user.is_staff %}
+                        <a href="{% url 'panel_demanda' %}" class="px-3 py-2 rounded hover:bg-blue-600">Demanda</a>
                         <a href="{% url 'admin:index' %}" class="px-3 py-2 rounded hover:bg-blue-600">Admin</a>
                     {% endif %}
                     <span class="px-3 py-2 text-blue-100">Hola, {{ user.username }}</span>

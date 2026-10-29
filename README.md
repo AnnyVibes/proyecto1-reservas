@@ -8,25 +8,35 @@ Incluye un **calendario interactivo con FullCalendar**, gestión de usuarios, va
 ## **Características principales**
 
 ### **Modelos implementados**
-- **Resource** – Representa cada recurso o pista disponible (pádel, fútbol, etc.).
-- **Booking** – Registra las reservas de usuarios para un recurso.
-- **Availability (Bloqueos)** – Define franjas horarias en las que una pista no está disponible (bloqueos administrativos).
-- **User (Autenticación)** – Gestión de usuarios con login/logout.
+- **Resource** – Cada pista, con su precio por hora (`price_per_hour`).
+- **Booking** – Reserva de un usuario, con estado `confirmada` / `cancelada`.
+- **Availability (Bloqueos)** – Franjas en las que una pista no se puede reservar.
+- **PaymentMethod** – Tarjeta guardada (solo titular, marca, últimos 4 dígitos, vencimiento y token).
+- **Payment** – Pago simulado de cada reserva.
 
 ### **Funcionalidades clave**
-- 📅 **Calendario de disponibilidad** con **FullCalendar**.
-- ⛔ **Evita solapamiento de reservas** automáticamente.
-- 🔁 **Reservas recurrentes** (opción de repetir semanalmente).
-- 🔒 **Bloqueos de recursos** gestionados desde el panel de administración.
-- 👨💼 **Panel de administración Django Admin** para gestionar usuarios, recursos, reservas y bloqueos.
-- 🔔 **Notificaciones al usuario** al crear reservas o cuando se produce un conflicto.
+- 📅 **Calendario mensual coloreado** por disponibilidad (libre, parcial, completo, pasado), con vistas de semana y día, en español.
+- 💳 **Pago simulado** en un modal, con tarjeta nueva o guardada ("Guardar mis datos"). Nunca se guarda el número completo ni el CVV.
+- 🗂️ **Mis reservas**: próximas y pasadas, con cancelación hasta 2 horas antes. La franja cancelada queda libre.
+- ✉️ **Correos** de confirmación y cancelación (en desarrollo se muestran en la consola).
+- 📈 **Panel de demanda** para staff: histórico semanal, previsión por promedio móvil de 4 semanas y mapa de calor por día y hora.
+- ⛔ **Validación en el servidor**: solapes, bloqueos, horario 09:00–21:00, fechas pasadas y reservas recurrentes atómicas (máx. 12 semanas).
+- 👨‍💼 **Django Admin** para pistas, reservas, bloqueos, tarjetas y pagos.
+
+### **Tarjetas de prueba (pago simulado)**
+| Número | Resultado |
+|---|---|
+| `4242 4242 4242 4242` | Aprobada |
+| `4000 0000 0000 0002` | Siempre rechazada |
+
+Cualquier vencimiento futuro y un CVV de 3 dígitos.
 
 ---
 
 ## **Tecnologías utilizadas**
 
 - **Backend:** Django 5 (Python 3.12)
-- **Frontend:** HTML5, CSS3, JavaScript (con integración de FullCalendar)
+- **Frontend:** plantillas de Django con una plantilla base común, Tailwind (CDN), FullCalendar 6.1.11 y Chart.js 4.4.1 (CDN)
 - **Base de datos:** SQLite (por defecto, fácil de cambiar a MySQL o PostgreSQL)
 - **Autenticación:** Sistema de usuarios de Django
 - **UI:** Diseño minimalista con **navbar**, cards y calendario interactivo
@@ -100,6 +110,20 @@ Accede en tu navegador a http://127.0.0.1:8000/
 ```bash
 python manage.py test
 ```
+
+### **9. (Opcional) Datos de ejemplo**
+
+```bash
+python manage.py generar_historico --semanas 26 --seed 42   # histórico para el panel de demanda
+python manage.py generar_historico --semanas 0 --reset      # borra solo ese histórico
+python manage.py crear_reservas_demo                        # usuario demo_user con reservas futuras
+```
+
+### **Correo**
+
+Por defecto los correos se imprimen en la consola de `runserver`. Para usar un servidor SMTP real,
+define la variable de entorno `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend` y las
+variables `EMAIL_HOST`, `EMAIL_PORT`, etc.
 
 Uso de la aplicación
 Panel de administración:

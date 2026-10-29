@@ -4,12 +4,23 @@
 
 {% block extra_head %}
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.11/locales-all.global.min.js"></script>
     <style>
         /* Estilos del calendario que Tailwind no cubre */
         .fc .fc-toolbar-title { font-size: 1.25rem; font-weight: 600; }
+        .fc .fc-toolbar-title::first-letter { text-transform: uppercase; }
         .fc .fc-button-primary { background: #1d4ed8; border-color: #1d4ed8; }
         .fc .fc-button-primary:not(:disabled).fc-button-active,
         .fc .fc-button-primary:hover { background: #1e40af; border-color: #1e40af; }
+
+        /* Colores de disponibilidad por día (vista mensual) */
+        .fc .dia-libre    { background: #dcfce7; }
+        .fc .dia-parcial  { background: #fef9c3; }
+        .fc .dia-completo { background: #fee2e2; }
+        .fc .dia-pasado   { background: #f3f4f6; color: #9ca3af; }
+        .fc .dia-libre, .fc .dia-parcial { cursor: pointer; }
+        .fc .dia-completo, .fc .dia-pasado { cursor: not-allowed; }
+        .leyenda-color { display: inline-block; width: 0.9rem; height: 0.9rem; border-radius: 0.2rem; border: 1px solid #d1d5db; vertical-align: middle; }
     </style>
 {% endblock %}
 
@@ -18,7 +29,10 @@
         <div>
             <a href="{% url 'home' %}" class="text-sm text-blue-700 hover:underline">← Volver a las pistas</a>
             <h1 class="text-2xl font-bold">{{ resource.name }}</h1>
-            <p class="text-sm text-gray-600">Selecciona una franja para reservarla. Horario de 09:00 a 21:00.</p>
+            <p class="text-sm text-gray-600">
+                Elige un día libre o parcial para ver sus horas y selecciona una franja para reservarla.
+                Horario de 09:00 a 21:00.
+            </p>
         </div>
         <button id="btn-refresh" type="button"
                 class="bg-white border border-blue-600 text-blue-700 px-4 py-2 rounded hover:bg-blue-50">
@@ -32,14 +46,110 @@
     </div>
     {% endif %}
 
+    <!-- Leyenda de colores de la vista mensual -->
+    <div id="leyenda" class="flex flex-wrap gap-4 mb-3 text-sm text-gray-700">
+        <span><span class="leyenda-color" style="background:#dcfce7"></span> Libre</span>
+        <span><span class="leyenda-color" style="background:#fef9c3"></span> Parcialmente ocupado</span>
+        <span><span class="leyenda-color" style="background:#fee2e2"></span> Completo</span>
+        <span><span class="leyenda-color" style="background:#f3f4f6"></span> Pasado</span>
+        <span><span class="leyenda-color" style="background:#2563eb"></span> Tu reserva</span>
+        <span><span class="leyenda-color" style="background:#ef4444"></span> Bloqueado</span>
+    </div>
+
     <!-- Genera la cookie csrftoken que el JS envía en la cabecera X-CSRFToken -->
     {% csrf_token %}
 
-    <!-- Contenedor del calendario con data-resource-id y user-logged -->
     <div id="calendar" class="bg-white rounded-lg shadow p-2 sm:p-4"
          data-resource-id="{{ resource.id }}"
          data-user-logged="{{ is_authenticated }}">
     </div>
+
+    <!-- Modal de reserva y pago simulado (sustituye a confirm/prompt) -->
+    <div id="modal-reserva" class="hidden fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4"
+         role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+        <form id="form-reserva" class="bg-white rounded-lg shadow-xl w-full max-w-md overflow-y-auto p-6" style="max-height: 95vh;" autocomplete="off">
+            <h2 id="modal-titulo" class="text-xl font-bold mb-4">Confirmar reserva</h2>
+
+            <dl class="grid grid-cols-3 gap-y-1 text-sm mb-4">
+                <dt class="text-gray-600">Pista</dt><dd class="col-span-2 font-medium">{{ resource.name }}</dd>
+                <dt class="text-gray-600">Fecha</dt><dd id="modal-fecha" class="col-span-2 font-medium"></dd>
+                <dt class="text-gray-600">Horario</dt><dd id="modal-horario" class="col-span-2 font-medium"></dd>
+                <dt class="text-gray-600">Precio</dt><dd class="col-span-2 font-medium">${{ resource.price_per_hour|stringformat:".2f" }} / hora</dd>
+            </dl>
+
+            <label for="modal-repetir" class="block text-sm font-medium mb-1">Repetir cada semana</label>
+            <select id="modal-repetir" class="w-full border rounded px-3 py-2 mb-3 bg-white">
+                <option value="0">No repetir</option>
+                {% for n in semanas_repeticion %}<option value="{{ n }}">{{ n }} semana{{ n|pluralize }} más</option>{% endfor %}
+            </select>
+
+            <div class="flex items-baseline justify-between bg-gray-50 rounded p-3 mb-4">
+                <span class="text-sm text-gray-600" id="modal-detalle-total"></span>
+                <span class="text-xl font-bold" id="modal-total"></span>
+            </div>
+
+            <fieldset class="mb-3">
+                <legend class="text-sm font-medium mb-2">Método de pago</legend>
+                {% for tarjeta in tarjetas %}
+                <label class="flex items-center gap-2 border rounded px-3 py-2 mb-2 cursor-pointer">
+                    <input type="radio" name="metodo" value="{{ tarjeta.id }}" {% if forloop.first %}checked{% endif %}>
+                    <span>Pagar con tarjeta terminada en <strong>{{ tarjeta.last4 }}</strong>
+                        <span class="text-gray-500 text-sm">({{ tarjeta.marca }}, vence {{ tarjeta.vence }})</span></span>
+                </label>
+                {% endfor %}
+                <label class="flex items-center gap-2 border rounded px-3 py-2 cursor-pointer">
+                    <input type="radio" name="metodo" value="nueva" {% if not tarjetas %}checked{% endif %}>
+                    <span>Usar una tarjeta nueva</span>
+                </label>
+            </fieldset>
+
+            <div id="form-tarjeta-nueva" class="space-y-3 mb-3">
+                <div>
+                    <label for="tarjeta-titular" class="block text-sm mb-1">Titular</label>
+                    <input id="tarjeta-titular" data-requerido maxlength="100" autocomplete="cc-name"
+                           class="w-full border rounded px-3 py-2">
+                </div>
+                <div>
+                    <label for="tarjeta-numero" class="block text-sm mb-1">Número de tarjeta</label>
+                    <input id="tarjeta-numero" data-requerido inputmode="numeric" maxlength="23" autocomplete="cc-number"
+                           placeholder="4242 4242 4242 4242" class="w-full border rounded px-3 py-2">
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label for="tarjeta-mes" class="block text-sm mb-1">Mes</label>
+                        <input id="tarjeta-mes" data-requerido inputmode="numeric" maxlength="2" placeholder="MM"
+                               autocomplete="cc-exp-month" class="w-full border rounded px-3 py-2">
+                    </div>
+                    <div>
+                        <label for="tarjeta-anio" class="block text-sm mb-1">Año</label>
+                        <input id="tarjeta-anio" data-requerido inputmode="numeric" maxlength="4" placeholder="AAAA"
+                               autocomplete="cc-exp-year" class="w-full border rounded px-3 py-2">
+                    </div>
+                    <div>
+                        <label for="tarjeta-cvv" class="block text-sm mb-1">CVV</label>
+                        <input id="tarjeta-cvv" data-requerido type="password" inputmode="numeric" maxlength="4"
+                               autocomplete="cc-csc" class="w-full border rounded px-3 py-2">
+                    </div>
+                </div>
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" id="tarjeta-guardar"> Guardar mis datos para próximas reservas
+                </label>
+                <p class="text-xs text-gray-500">
+                    Pago simulado. Tarjetas de prueba: 4242 4242 4242 4242 (aprobada) y 4000 0000 0000 0002 (rechazada).
+                    Nunca guardamos el número completo ni el CVV.
+                </p>
+            </div>
+
+            <p id="modal-error" role="alert" class="hidden mb-3 p-2 rounded bg-red-50 border border-red-200 text-red-800 text-sm"></p>
+
+            <div class="flex justify-end gap-2">
+                <button type="button" id="modal-cancelar" class="px-4 py-2 rounded border hover:bg-gray-50">Cancelar</button>
+                <button type="submit" id="modal-pagar" class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Pagar y reservar</button>
+            </div>
+        </form>
+    </div>
+
+    {{ datos_pago|json_script:"datos-pago" }}
 {% endblock %}
 
 {% block extra_js %}
@@ -49,13 +159,12 @@
             const resourceId = calendarElement.dataset.resourceId;
             const userLogged = calendarElement.dataset.userLogged === "True";
 
-            // Datos de reservas y bloqueos enviados desde Django
-            const reservas = JSON.parse('{{ reservas_json|escapejs }}');
-            const bloqueos = JSON.parse('{{ bloqueos_json|escapejs }}');
-
             // Horario de reservas (el mismo que valida el servidor)
             const HORA_INICIO = 9;
             const HORA_FIN = 21;
+
+            // Estado de cada día según /api/disponibilidad/: {"2026-11-03": "libre", ...}
+            let estadoPorDia = {};
 
             // Fecha en ISO con la zona horaria del navegador, p. ej. 2026-10-29T09:00:00-05:00
             function fechaISO(d) {
@@ -68,54 +177,107 @@
                     + `${signo}${dos(Math.floor(abs / 60))}:${dos(abs % 60)}`;
             }
 
-            // Verifica si hay bloqueo del admin
-            function isBlocked(start, end) {
-                for (const b of bloqueos) {
-                    const bloqueadoStart = new Date(b.start);
-                    const bloqueadoEnd = new Date(b.end);
-                    if (start < bloqueadoEnd && end > bloqueadoStart) {
-                        return true;
-                    }
-                }
-                return false;
+            // Solo la fecha local, p. ej. 2026-10-29
+            function fechaDia(d) {
+                return fechaISO(d).slice(0, 10);
             }
 
-            // Verifica si ya existe una reserva
-            function isReserved(start, end) {
-                for (const r of reservas) {
-                    const reservaStart = new Date(r.start);
-                    const reservaEnd = new Date(r.end);
-                    if (start < reservaEnd && end > reservaStart) {
-                        return true;
+            // ¿La franja se solapa con un evento cargado (reserva o bloqueo)?
+            function franjaOcupada(start, end) {
+                return calendar.getEvents().find(e => e.start < end && e.end > start);
+            }
+
+            // Pide el estado de los días visibles y colorea las celdas del mes
+            function cargarDisponibilidad() {
+                const vista = calendar.view;
+                if (vista.type !== 'dayGridMonth') return;
+                const url = `/api/disponibilidad/${resourceId}/?start=${fechaDia(vista.activeStart)}&end=${fechaDia(vista.activeEnd)}`;
+                fetch(url)
+                    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                    .then(dias => {
+                        estadoPorDia = {};
+                        dias.forEach(d => { estadoPorDia[d.fecha] = d; });
+                        pintarDias();
+                    })
+                    .catch(() => console.error('No se pudo cargar la disponibilidad.'));
+            }
+
+            function pintarDias() {
+                document.querySelectorAll('.fc-dayGridMonth-view .fc-daygrid-day[data-date]').forEach(celda => {
+                    celda.classList.remove('dia-libre', 'dia-parcial', 'dia-completo', 'dia-pasado');
+                    const dia = estadoPorDia[celda.dataset.date];
+                    if (dia) {
+                        celda.classList.add('dia-' + dia.estado);
+                        celda.title = dia.estado === 'pasado'
+                            ? 'Día pasado'
+                            : `${dia.libres} de ${dia.total} franjas libres`;
                     }
-                }
-                return false;
+                });
+            }
+
+            function refrescar() {
+                calendar.refetchEvents();
+                cargarDisponibilidad();
             }
 
             var calendar = new FullCalendar.Calendar(calendarElement, {
-                initialView: 'timeGridWeek',
+                initialView: 'dayGridMonth',
                 locale: 'es',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                },
+                height: 'auto',
+                dayMaxEvents: 2,
                 selectable: true,
                 slotMinTime: "09:00:00", // Horario inicial
                 slotMaxTime: "21:00:00", // Horario final
                 slotDuration: "01:00:00",
-                // Solo un día a la vez: en la fila "todo el día" un único día;
-                // en las horas, franjas dentro de un mismo día entre 09:00 y 21:00
+                nowIndicator: true,
+
+                // Al cambiar de mes o de vista se recalculan los colores
+                datesSet: cargarDisponibilidad,
+                // Si FullCalendar vuelve a dibujar las celdas, conservan su color
+                dayCellClassNames: function(arg) {
+                    if (arg.view.type !== 'dayGridMonth') return [];   // solo se colorea el mes
+                    const dia = estadoPorDia[fechaDia(arg.date)];
+                    return dia ? ['dia-' + dia.estado] : [];
+                },
+
+                // Mes: solo días libres o parciales (un día a la vez).
+                // Semana/día: un único día en la fila "todo el día", o franjas futuras de 09:00 a 21:00
                 selectAllow: function(info) {
+                    if (calendar.view.type === 'dayGridMonth') {
+                        const siguiente = new Date(info.start);
+                        siguiente.setDate(siguiente.getDate() + 1);
+                        const dia = estadoPorDia[fechaDia(info.start)];
+                        return info.end.getTime() === siguiente.getTime()
+                            && !!dia && (dia.estado === 'libre' || dia.estado === 'parcial');
+                    }
                     if (info.allDay) {
                         const siguiente = new Date(info.start);
                         siguiente.setDate(siguiente.getDate() + 1);
-                        return info.end.getTime() === siguiente.getTime();
+                        const finDelDia = new Date(info.start);
+                        finDelDia.setHours(HORA_FIN, 0, 0, 0);
+                        return info.end.getTime() === siguiente.getTime() && finDelDia > new Date();
                     }
                     const minutos = d => d.getHours() * 60 + d.getMinutes();
                     return info.start.toDateString() === info.end.toDateString()
+                        && info.start >= new Date()
                         && minutos(info.start) >= HORA_INICIO * 60
                         && minutos(info.end) <= HORA_FIN * 60;
                 },
+
                 select: function(info) {
+                    // En el mes, elegir un día abre la vista de ese día
+                    if (calendar.view.type === 'dayGridMonth') {
+                        calendar.changeView('timeGridDay', info.startStr);
+                        return;
+                    }
+
                     let start = new Date(info.startStr);
                     let end = new Date(info.endStr);
-                    let mensaje = `¿Quieres crear una reserva desde ${info.startStr} hasta ${info.endStr}?`;
 
                     // "Todo el día" se reserva como una sola franja de 09:00 a 21:00 de ese día
                     if (info.allDay) {
@@ -123,16 +285,13 @@
                         start.setHours(HORA_INICIO, 0, 0, 0);
                         end = new Date(info.start);
                         end.setHours(HORA_FIN, 0, 0, 0);
-                        mensaje = `¿Quieres reservar todo el día ${start.toLocaleDateString('es')} de 09:00 a 21:00?`;
                     }
 
-                    if (isBlocked(start, end)) {
-                        alert("Esta franja horaria está bloqueada por el administrador.");
-                        return;
-                    }
-
-                    if (isReserved(start, end)) {
-                        alert("Ya existe una reserva en esta franja horaria.");
+                    const ocupada = franjaOcupada(start, end);
+                    if (ocupada) {
+                        alert(ocupada.title === 'Bloqueado'
+                            ? "Esta franja horaria está bloqueada por el administrador."
+                            : "Ya existe una reserva en esta franja horaria.");
                         return;
                     }
 
@@ -141,35 +300,130 @@
                         return;
                     }
 
-                    if (confirm(mensaje)) {
-                        crearReserva(fechaISO(start), fechaISO(end));
+                    abrirModal(start, end, info.allDay);
+                },
+
+                // En el mes, pulsar sobre una reserva también abre ese día (si se puede reservar)
+                eventClick: function(info) {
+                    if (calendar.view.type !== 'dayGridMonth') return;
+                    const dia = estadoPorDia[fechaDia(info.event.start)];
+                    if (dia && (dia.estado === 'libre' || dia.estado === 'parcial')) {
+                        calendar.changeView('timeGridDay', fechaDia(info.event.start));
                     }
                 },
-                eventSources: [
-    {
-        url: '/api/reservas/{{ resource.id }}/',
-        method: 'GET',
-        failure: function() {
-            alert('Error cargando eventos!');
-        }
-    },
-    {
-        events: JSON.parse('{{ bloqueos_json|escapejs }}'),
-        color: '#ef4444',  // Bloqueos en rojo
-        textColor: '#fff'  // Texto en blanco
-    }
-]
 
+                // FullCalendar añade start/end del rango visible a cada petición
+                eventSources: [
+                    {
+                        url: `/api/reservas/${resourceId}/`,
+                        failure: function() { alert('No se pudieron cargar las reservas.'); }
+                    },
+                    {
+                        url: `/api/bloqueos/${resourceId}/`,
+                        failure: function() { alert('No se pudieron cargar los bloqueos.'); }
+                    }
+                ]
             });
 
             calendar.render();
 
-            // === FUNCIÓN CREAR RESERVA CON REPETICIONES ===
-            function crearReserva(start, end) {
-                let repeat = prompt("¿Cuántas semanas quieres repetir esta reserva? (0 = solo esta semana)", "0");
-                if (repeat === null) return;
-                repeat = parseInt(repeat);
-                if (isNaN(repeat) || repeat < 0) repeat = 0;
+            // === MODAL DE RESERVA Y PAGO (sustituye a confirm/prompt) ===
+            const datosPago = JSON.parse(document.getElementById('datos-pago').textContent);
+            const precioHora = parseFloat(datosPago.precio_hora);
+            const modal = document.getElementById('modal-reserva');
+            const formulario = document.getElementById('form-reserva');
+            const errorModal = document.getElementById('modal-error');
+            const botonPagar = document.getElementById('modal-pagar');
+            const repetir = document.getElementById('modal-repetir');
+            const bloqueTarjetaNueva = document.getElementById('form-tarjeta-nueva');
+            let pendiente = null;
+
+            const hora = d => d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+
+            function metodoElegido() {
+                const marcado = formulario.querySelector('input[name="metodo"]:checked');
+                return marcado ? marcado.value : 'nueva';
+            }
+
+            function actualizarTotal() {
+                const horas = (pendiente.end - pendiente.start) / 3600000;
+                const reservas = parseInt(repetir.value, 10) + 1;
+                const total = precioHora * horas * reservas;
+                document.getElementById('modal-total').textContent = `$${total.toFixed(2)}`;
+                document.getElementById('modal-detalle-total').textContent =
+                    `${reservas} reserva(s) × ${horas} h × $${precioHora.toFixed(2)}`;
+            }
+
+            function actualizarMetodo() {
+                const nueva = metodoElegido() === 'nueva';
+                bloqueTarjetaNueva.classList.toggle('hidden', !nueva);
+                bloqueTarjetaNueva.querySelectorAll('input[data-requerido]').forEach(i => { i.required = nueva; });
+            }
+
+            function limpiarTarjeta() {
+                // Los datos de la tarjeta no se conservan en la página
+                bloqueTarjetaNueva.querySelectorAll('input').forEach(i => {
+                    if (i.type === 'checkbox') { i.checked = false; } else { i.value = ''; }
+                });
+            }
+
+            function abrirModal(start, end, todoElDia) {
+                pendiente = { start, end };
+                const fecha = start.toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                document.getElementById('modal-fecha').textContent = fecha.charAt(0).toUpperCase() + fecha.slice(1);
+                document.getElementById('modal-horario').textContent =
+                    `de ${hora(start)} a ${hora(end)}` + (todoElDia ? ' (todo el día)' : '');
+                repetir.value = '0';
+                errorModal.classList.add('hidden');
+                actualizarTotal();
+                actualizarMetodo();
+                modal.classList.remove('hidden');
+                botonPagar.focus();
+            }
+
+            function cerrarModal() {
+                modal.classList.add('hidden');
+                limpiarTarjeta();
+                pendiente = null;
+                calendar.unselect();
+            }
+
+            repetir.addEventListener('change', actualizarTotal);
+            formulario.querySelectorAll('input[name="metodo"]').forEach(r => r.addEventListener('change', actualizarMetodo));
+            document.getElementById('modal-cancelar').addEventListener('click', cerrarModal);
+            modal.addEventListener('click', e => { if (e.target === modal) { cerrarModal(); } });
+            document.addEventListener('keydown', e => {
+                if (e.key === 'Escape' && !modal.classList.contains('hidden')) { cerrarModal(); }
+            });
+
+            formulario.addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (!pendiente) { return; }
+
+                const cuerpo = {
+                    resource_id: resourceId,
+                    start_time: fechaISO(pendiente.start),
+                    end_time: fechaISO(pendiente.end),
+                    repeat_weeks: parseInt(repetir.value, 10)
+                };
+                const metodo = metodoElegido();
+                const guardar = document.getElementById('tarjeta-guardar').checked;
+                if (metodo === 'nueva') {
+                    cuerpo.tarjeta = {
+                        titular: document.getElementById('tarjeta-titular').value,
+                        numero: document.getElementById('tarjeta-numero').value,
+                        mes: document.getElementById('tarjeta-mes').value,
+                        anio: document.getElementById('tarjeta-anio').value,
+                        cvv: document.getElementById('tarjeta-cvv').value
+                    };
+                    cuerpo.guardar = guardar;
+                } else {
+                    cuerpo.payment_method_id = parseInt(metodo, 10);
+                }
+
+                botonPagar.disabled = true;
+                botonPagar.textContent = 'Procesando…';
+                errorModal.classList.add('hidden');
 
                 fetch('/api/reservas/crear/', {
                     method: 'POST',
@@ -177,24 +431,31 @@
                         'Content-Type': 'application/json',
                         'X-CSRFToken': getCookie('csrftoken')
                     },
-                    body: JSON.stringify({
-                        resource_id: resourceId,
-                        start_time: start,
-                        end_time: end,
-                        repeat_weeks: repeat
-                    })
+                    body: JSON.stringify(cuerpo)
                 })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        alert(`Reserva(s) creada(s) correctamente: ${data.reservas.length} reserva(s).`);
-                        calendar.refetchEvents();
+                        cerrarModal();
+                        alert(`Reserva confirmada: ${data.reservas.length} reserva(s).\n`
+                            + `Importe: $${data.pago.importe} · Referencia: ${data.pago.referencia}`);
+                        // Si se guardó una tarjeta nueva, se recarga para ofrecerla la próxima vez
+                        if (metodo === 'nueva' && guardar) { location.reload(); } else { refrescar(); }
                     } else {
-                        alert(data.error || 'Error al crear la reserva.');
+                        errorModal.textContent = data.error || 'No se pudo crear la reserva.';
+                        errorModal.classList.remove('hidden');
+                        document.getElementById('tarjeta-cvv').value = '';
                     }
                 })
-                .catch(error => console.error('Error:', error));
-            }
+                .catch(() => {
+                    errorModal.textContent = 'No se pudo contactar con el servidor. Inténtalo de nuevo.';
+                    errorModal.classList.remove('hidden');
+                })
+                .finally(() => {
+                    botonPagar.disabled = false;
+                    botonPagar.textContent = 'Pagar y reservar';
+                });
+            });
 
             // Función para obtener CSRF
             function getCookie(name) {
@@ -212,13 +473,7 @@
                 return cookieValue;
             }
 
-            // Botón para refrescar eventos
-            var btnRefresh = document.getElementById('btn-refresh');
-            if (btnRefresh) {
-                btnRefresh.addEventListener('click', function() {
-                    calendar.refetchEvents();
-                });
-            }
+            document.getElementById('btn-refresh').addEventListener('click', refrescar);
         });
     </script>
 {% endblock %}

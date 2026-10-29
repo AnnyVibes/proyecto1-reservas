@@ -1,11 +1,14 @@
-from django.core.management.base import BaseCommand
+from datetime import datetime, time, timedelta
+
 from django.contrib.auth.models import User
-from reservas.models import Resource, Booking
-from datetime import datetime, timedelta
-import random
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+
+from reservas.models import Booking, Resource
+
 
 class Command(BaseCommand):
-    help = "Crea recursos y reservas de prueba para el calendario"
+    help = "Crea un usuario demo y reservas de prueba para los próximos días (solo borra las del usuario demo)"
 
     def handle(self, *args, **kwargs):
         # Crear un usuario demo si no existe
@@ -20,18 +23,19 @@ class Command(BaseCommand):
         if creado:
             self.stdout.write(self.style.SUCCESS("Recurso Pista Pádel 1 creado."))
 
-        # Crear reservas de prueba para los próximos días
-        Booking.objects.all().delete()  # Limpia reservas anteriores
-        hoy = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
+        # Limpia solo las reservas anteriores del usuario demo (nunca las de otros usuarios)
+        Booking.objects.filter(user=user).delete()
+        manana = timezone.localdate() + timedelta(days=1)
 
-        for i in range(5):  # 5 días
-            for j in range(3):  # 3 reservas al día
-                inicio = hoy + timedelta(days=i, hours=j * 2)
+        creadas = 0
+        for i in range(5):  # 5 días, empezando mañana
+            for j in range(3):  # 3 reservas al día: 09:00, 11:00 y 13:00
+                inicio = timezone.make_aware(datetime.combine(manana + timedelta(days=i), time(9 + j * 2)))
                 fin = inicio + timedelta(hours=1)
-                Booking.objects.create(
-                    user=user,
-                    resource=recurso,
-                    start_time=inicio,
-                    end_time=fin
-                )
-        self.stdout.write(self.style.SUCCESS("Reservas demo creadas correctamente."))
+                ocupada = Booking.objects.activas().filter(
+                    resource=recurso, start_time__lt=fin, end_time__gt=inicio
+                ).exists()
+                if not ocupada:
+                    Booking.objects.create(user=user, resource=recurso, start_time=inicio, end_time=fin)
+                    creadas += 1
+        self.stdout.write(self.style.SUCCESS(f"Reservas demo creadas correctamente: {creadas}."))
