@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+
+{% block title %}Panel de demanda{% endblock %}
+
+{% block extra_head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+    <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">Panel de demanda</h1>
+            <p class="text-sm text-gray-600">{% if pista %}{{ pista.name }}{% else %}Todas las pistas{% endif %} · últimas {{ semanas_historico }} semanas completas</p>
+        </div>
+        <form method="get" class="flex items-center gap-2">
+            <label for="pista" class="text-sm font-medium">Pista</label>
+            <select id="pista" name="pista" onchange="this.form.submit()" class="border rounded px-3 py-2 bg-white">
+                <option value="">Todas</option>
+                {% for p in pistas %}
+                    <option value="{{ p.id }}" {% if pista and p.id == pista.id %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <noscript><button type="submit" class="bg-blue-600 text-white px-3 py-2 rounded">Filtrar</button></noscript>
+        </form>
+    </div>
+
+    {% if total_historico == 0 %}
+        <div class="mb-6 p-3 rounded border bg-yellow-50 border-yellow-200 text-yellow-800">
+            No hay reservas en las últimas {{ semanas_historico }} semanas. Para ver datos de ejemplo ejecuta
+            <code>python manage.py generar_historico --semanas 26 --seed 42</code>.
+        </div>
+    {% endif %}
+
+    <!-- Resumen -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-sm text-gray-600">Reservas en {{ semanas_historico }} semanas</p>
+            <p class="text-2xl font-bold">{{ total_historico }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-sm text-gray-600">Previsión semanal (promedio de {{ ventana }} semanas)</p>
+            <p class="text-2xl font-bold">{{ promedio_ventana }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-sm text-gray-600">Franja más demandada</p>
+            <p class="text-2xl font-bold">{{ franja_top|default:"—" }}</p>
+        </div>
+    </div>
+
+    <!-- Histórico + previsión -->
+    <section class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-2">Reservas por semana y previsión de las próximas {{ prevision|length }} semanas</h2>
+        <div class="relative" style="height: 320px;">
+            <canvas id="grafico-semanas" aria-label="Gráfico de reservas por semana y previsión" role="img"></canvas>
+        </div>
+    </section>
+
+    <!-- Mapa de calor -->
+    <section class="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-2">Ocupación por día de la semana y hora</h2>
+        <p class="text-sm text-gray-600 mb-3">Número de veces que se ha reservado cada franja (todas las reservas no canceladas). Más oscuro = más demanda.</p>
+        <div class="overflow-x-auto">
+            <table class="text-xs sm:text-sm border-collapse">
+                <thead>
+                    <tr>
+                        <th class="p-2"></th>
+                        {% for hora in horas %}<th class="p-2 font-medium text-gray-600">{{ hora|stringformat:"02d" }}:00</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for dia, celdas in filas_calor %}
+                    <tr>
+                        <th class="p-2 text-left font-medium text-gray-700">{{ dia }}</th>
+                        {% for valor, intensidad in celdas %}
+                            <td class="p-2 text-center border border-white rounded {% if intensidad > 0.6 %}text-white{% endif %}"
+                                style="background: rgba(37, 99, 235, {{ intensidad|stringformat:'.2f' }}); min-width: 2.5rem;"
+                                title="{{ dia }} {{ forloop.counter0|add:9 }}:00 → {{ valor }} reservas">{{ valor }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Método -->
+    <section class="bg-white rounded-lg shadow p-4">
+        <h2 class="text-lg font-semibold mb-2">¿Cómo se calcula la previsión?</h2>
+        <p class="mb-2">
+            Se usa un <strong>promedio móvil de {{ ventana }} semanas</strong>: la previsión de cada una de las próximas
+            semanas es la media de reservas de las últimas {{ ventana }} semanas completas. Por eso la línea punteada es plana.
+        </p>
+        <p class="mb-1 font-medium">Limitaciones:</p>
+        <ul class="list-disc pl-6 text-sm text-gray-700 space-y-1">
+            <li>No detecta tendencias: si la demanda sube o baja de forma sostenida, la previsión va por detrás.</li>
+            <li>No tiene en cuenta la estacionalidad (vacaciones, festivos, clima) ni eventos especiales.</li>
+            <li>Con pocas semanas de datos el promedio es poco fiable; las reservas canceladas no se cuentan.</li>
+            <li>Es una orientación para planificar, no una predicción exacta.</li>
+        </ul>
+    </section>
+
+    {{ datos_grafico|json_script:"datos-grafico" }}
+{% endblock %}
+
+{% block extra_js %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const datos = JSON.parse(document.getElementById('datos-grafico').textContent);
+            new Chart(document.getElementById('grafico-semanas'), {
+                type: 'line',
+                data: {
+                    labels: datos.etiquetas,
+                    datasets: [
+                        {
+                            label: 'Reservas reales',
+                            data: datos.historico,
+                            borderColor: '#2563eb',
+                            backgroundColor: '#2563eb',
+                            tension: 0.2
+                        },
+                        {
+                            label: 'Previsión (promedio móvil)',
+                            data: datos.prevision,
+                            borderColor: '#f59e0b',
+                            backgroundColor: '#f59e0b',
+                            borderDash: [6, 4],
+                            tension: 0
+                        }
+                    ]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { title: { display: true, text: 'Semana (lunes)' } },
+                        y: { beginAtZero: true, title: { display: true, text: 'Reservas' }, ticks: { precision: 0 } }
+                    }
+                }
+            });
+        });
+    </script>
+{% endblock %}

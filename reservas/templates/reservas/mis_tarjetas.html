@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Mis tarjetas{% endblock %}
+
+{% block content %}
+    <h1 class="text-2xl font-bold mb-2">Mis tarjetas</h1>
+    <p class="text-sm text-gray-600 mb-6">
+        Pagos simulados. Solo guardamos la marca, los últimos 4 dígitos y el vencimiento; nunca el número completo ni el CVV.
+        Para guardar una tarjeta, marca <em>"Guardar mis datos"</em> al pagar una reserva.
+    </p>
+
+    {% if tarjetas %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {% for tarjeta in tarjetas %}
+            <div class="bg-white rounded-lg shadow p-4 flex items-center justify-between gap-4">
+                <div>
+                    <p class="font-semibold">{{ tarjeta.get_brand_display }} •••• {{ tarjeta.last4 }}</p>
+                    <p class="text-sm text-gray-600">{{ tarjeta.holder_name }} · vence {{ tarjeta.exp_month|stringformat:"02d" }}/{{ tarjeta.exp_year }}</p>
+                </div>
+                <form method="post" action="{% url 'eliminar_tarjeta' tarjeta.id %}"
+                      onsubmit="return confirm('¿Eliminar la tarjeta terminada en {{ tarjeta.last4 }}?');">
+                    {% csrf_token %}
+                    <button type="submit" class="text-red-600 border border-red-300 px-3 py-1 rounded hover:bg-red-50">Eliminar</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-gray-600">No tienes tarjetas guardadas. <a href="{% url 'home' %}" class="text-blue-600 underline">Reservar una pista</a></p>
+    {% endif %}
+{% endblock %}
